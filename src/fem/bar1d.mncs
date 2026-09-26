@@ -1,0 +1,70 @@
+mncs 0.18;
+
+// mncs.fem.bar1d.v1 — linear axial-bar element: material and local matrices.
+//
+// Element stiffness for prismatic bar: ke = (A*E/L) * [[1,-1],[-1,1]],
+// row-major flat [k00,k01,k10,k11]. The division executes only after the
+// material and length guards pass, so zero-length elements and invalid
+// materials are structured outcomes, never traps.
+//
+// FEM owns this formula (it is element semantics); generic scalar
+// arithmetic stays in Numeric and generic matrix storage in Math/Numerics.
+
+module mncs.fem.bar1d.v1;
+
+// Prismatic bar material: cross-section area and Young's modulus.
+record BarMaterial { area: f64, young: f64 }
+
+fn bar_material(area: f64, young: f64) -> (result: BarMaterial) {
+    return BarMaterial { area: area, young: young };
+}
+
+enum MatCheck { Ok, BadArea, BadYoung }
+
+fn check_material(m: BarMaterial) -> (result: MatCheck) {
+    if m.area <= 0.0 {
+        return MatCheck.BadArea;
+    }
+    if m.young <= 0.0 {
+        return MatCheck.BadYoung;
+    }
+    return MatCheck.Ok;
+}
+
+fn material_is_ok(c: MatCheck) -> (result: bool) {
+    return match c {
+        MatCheck.Ok => true,
+        MatCheck.BadArea => false,
+        MatCheck.BadYoung => false,
+    };
+}
+
+// Outcome of forming the element stiffness matrix.
+enum KeOutcome { Value { ke: [f64; 4] }, BadLength, BadMaterial }
+
+fn bar_ke(length: f64, mat: BarMaterial) -> (result: KeOutcome) {
+    return match check_material(mat) {
+        MatCheck.Ok => ke_guarded(length, mat),
+        MatCheck.BadArea => KeOutcome.BadMaterial,
+        MatCheck.BadYoung => KeOutcome.BadMaterial,
+    };
+}
+
+fn ke_guarded(length: f64, mat: BarMaterial) -> (result: KeOutcome) {
+    if length <= 0.0 {
+        return KeOutcome.BadLength;
+    }
+    return KeOutcome.Value { ke: ke_from_axial(mat.area * mat.young / length) };
+}
+
+// Pure constructor from axial stiffness k = A*E/L (total; caller validates).
+fn ke_from_axial(k: f64) -> (result: [f64; 4]) {
+    return [k, 0.0 - k, 0.0 - k, k];
+}
+
+// Consistent nodal vector for a uniform axial body force b (force/length):
+// fe = b*L/2 * [1, 1]. Total; the caller owns length validity.
+fn uniform_body_load(length: f64, b: f64) -> (result: [f64; 2]) {
+    let v: f64 = b * length * 0.5;
+    return [v, v];
+}

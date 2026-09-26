@@ -1,0 +1,85 @@
+mncs 0.18;
+
+// Native contracts for constraints: DOF-set membership, prescribed
+// value lookup, fix0 reduction (including nonzero prescribed values),
+// and reaction/equilibrium recovery. All values dyadic: exact `==`.
+
+module mncs.fem.test.constraints1d.v1;
+
+use mncs.test.assertions;
+use mncs.test.suite;
+use mncs.fem.constraints1d;
+
+test constrained_set_names_correct_dofs() -> (result: TestResult) {
+    let dofs: [Dirichlet; 1] = [dirichlet(0, 0.0)];
+    let hit: bool = is_constrained(dofs, 0);
+    let miss1: bool = is_constrained(dofs, 1) == false;
+    let miss5: bool = is_constrained(dofs, 5) == false;
+    return from_assertion(equals_bool(true, hit && miss1 && miss5, 4501));
+}
+
+test multi_constraint_membership() -> (result: TestResult) {
+    let dofs: [Dirichlet; 2] = [dirichlet(0, 0.0), dirichlet(2, 0.0)];
+    let ok: bool = is_constrained(dofs, 0) && is_constrained(dofs, 2);
+    let free: bool = is_constrained(dofs, 1) == false;
+    return from_assertion(equals_bool(true, ok && free, 4502));
+}
+
+test prescribed_value_lookup() -> (result: TestResult) {
+    let dofs: [Dirichlet; 1] = [dirichlet(0, 0.5)];
+    let got: bool = prescribed_or(dofs, 0, 0.0) == 0.5;
+    let fallback: bool = prescribed_or(dofs, 1, 7.0) == 7.0;
+    return from_assertion(equals_bool(true, got && fallback, 4503));
+}
+
+test reduce_fix0_homogeneous() -> (result: TestResult) {
+    // K = [[2,-2],[-2,2]], F = [0,4], u0 = 0: free system 2*u1 = 4.
+    let k: [[f64; 2]; 2] = [[2.0, 0.0 - 2.0], [0.0 - 2.0, 2.0]];
+    let f: [f64; 2] = [0.0, 4.0];
+    let red: Free1 = reduce_fix0_2(k, f, 0.0);
+    let ok: bool = red.kff == 2.0 && red.ff == 4.0;
+    return from_assertion(equals_bool(true, ok, 4504));
+}
+
+test reduce_fix0_carries_prescribed_column() -> (result: TestResult) {
+    // Nonzero settlement u0 = 1 shifts the free load by -k10*u0:
+    // ff = 4 - (-2)*1 = 6. Constraints are loads, not just deletions.
+    let k: [[f64; 2]; 2] = [[2.0, 0.0 - 2.0], [0.0 - 2.0, 2.0]];
+    let f: [f64; 2] = [0.0, 4.0];
+    let red: Free1 = reduce_fix0_2(k, f, 1.0);
+    let ok: bool = red.kff == 2.0 && red.ff == 6.0;
+    return from_assertion(equals_bool(true, ok, 4505));
+}
+
+test reduce_fix0_three_node() -> (result: TestResult) {
+    // Series K, tip load 1 at DOF 2, u0 = 0: free [[2,-1],[-1,1]], ff [0,1].
+    let k: [[f64; 3]; 3] = [[1.0, -1.0, 0.0], [-1.0, 2.0, -1.0], [0.0, -1.0, 1.0]];
+    let f: [f64; 3] = [0.0, 0.0, 1.0];
+    let red: Free2 = reduce_fix0_3(k, f, 0.0);
+    let kk: bool = red.k[0][0] == 2.0 && red.k[0][1] == -1.0 && red.k[1][0] == -1.0 && red.k[1][1] == 1.0;
+    let ff: bool = red.f[0] == 0.0 && red.f[1] == 1.0;
+    return from_assertion(equals_bool(true, kk && ff, 4506));
+}
+
+test reaction_and_equilibrium() -> (result: TestResult) {
+    // Solved state u = [0, 2] under F = [0, 4]: R0 = -4, R0 + F1 = 0.
+    let k: [[f64; 2]; 2] = [[2.0, 0.0 - 2.0], [0.0 - 2.0, 2.0]];
+    let f: [f64; 2] = [0.0, 4.0];
+    let u: [f64; 2] = [0.0, 2.0];
+    let r: f64 = reaction_fix0_2(k, u, f);
+    let ok: bool = r == -4.0;
+    let equilibrium: bool = r + f[1] == 0.0;
+    return from_assertion(equals_bool(true, ok && equilibrium, 4507));
+}
+
+test reaction_three_node_equilibrium() -> (result: TestResult) {
+    // Solved 3-node state u = [0, 2, 4] under tip load 4: R0 = -4.
+    // (Free [[4,-2],[-2,2]] [u1,u2] = [0,4] gives u1 = 2, u2 = 4.)
+    let k: [[f64; 3]; 3] = [[2.0, -2.0, 0.0], [-2.0, 4.0, -2.0], [0.0, -2.0, 2.0]];
+    let f: [f64; 3] = [0.0, 0.0, 4.0];
+    let u: [f64; 3] = [0.0, 2.0, 4.0];
+    let r: f64 = reaction_fix0_3(k, u, f);
+    let ok: bool = r == -4.0;
+    let equilibrium: bool = r + f[2] == 0.0;
+    return from_assertion(equals_bool(true, ok && equilibrium, 4508));
+}

@@ -1,0 +1,79 @@
+mncs 0.18;
+
+// Native contracts for the REFERENCE solvers: closed-form answers and
+// structured singularity. The unconstrained-bar case pins the key FEM
+// semantic: a rigid-body mode is `Singular` data, never a trap.
+
+module mncs.fem.test.solveref1d.v1;
+
+use mncs.test.assertions;
+use mncs.test.suite;
+use mncs.fem.solveref1d;
+
+test solve_1x1_value() -> (result: TestResult) {
+    let good: bool = match solve_1x1(2.0, 6.0) {
+        Solve1.Value { u } => u == 3.0,
+        Solve1.Singular => false,
+    };
+    let neg: bool = match solve_1x1(0.0 - 4.0, 2.0) {
+        Solve1.Value { u } => u == -0.5,
+        Solve1.Singular => false,
+    };
+    return from_assertion(equals_bool(true, good && neg, 4601));
+}
+
+test solve_1x1_singular() -> (result: TestResult) {
+    let s: bool = match solve_1x1(0.0, 1.0) {
+        Solve1.Value { u } => u != u,
+        Solve1.Singular => true,
+    };
+    let flag: bool = solve1_is_singular(solve_1x1(0.0, 1.0));
+    let not_flag: bool = solve1_is_singular(solve_1x1(2.0, 6.0)) == false;
+    return from_assertion(equals_bool(true, s && flag && not_flag, 4602));
+}
+
+test solve_2x2_known_answer() -> (result: TestResult) {
+    // [[2,1],[1,2]] [u0,u1] = [4,5] -> u = [1,2], exact Cramer.
+    let k: [[f64; 2]; 2] = [[2.0, 1.0], [1.0, 2.0]];
+    let f: [f64; 2] = [4.0, 5.0];
+    let good: bool = match solve_2x2(k, f) {
+        Solve2.Value { u } => u.u0 == 1.0 && u.u1 == 2.0,
+        Solve2.Singular => false,
+    };
+    return from_assertion(equals_bool(true, good, 4603));
+}
+
+test solve_2x2_free_bar_system() -> (result: TestResult) {
+    // Constrained 3-node bar free system [[2,-1],[-1,1]] [u] = [0,1]:
+    // u1 = 1, u2 = 2, exact.
+    let k: [[f64; 2]; 2] = [[2.0, -1.0], [-1.0, 1.0]];
+    let f: [f64; 2] = [0.0, 1.0];
+    let good: bool = match solve_2x2(k, f) {
+        Solve2.Value { u } => u.u0 == 1.0 && u.u1 == 2.0,
+        Solve2.Singular => false,
+    };
+    return from_assertion(equals_bool(true, good, 4604));
+}
+
+test solve_2x2_singular_is_structured() -> (result: TestResult) {
+    // Doubled row: zero determinant, no trap, Singular data.
+    let k: [[f64; 2]; 2] = [[1.0, 2.0], [2.0, 4.0]];
+    let f: [f64; 2] = [3.0, 6.0];
+    let s: bool = match solve_2x2(k, f) {
+        Solve2.Value { u } => u.u0 != u.u0,
+        Solve2.Singular => true,
+    };
+    return from_assertion(equals_bool(true, s, 4605));
+}
+
+test unconstrained_bar_is_singular_not_trap() -> (result: TestResult) {
+    // Free-free bar K = [[2,-2],[-2,2]] under [0,4]: det = 0, the
+    // rigid-body mode. FEM meaning: insufficient constraints.
+    let k: [[f64; 2]; 2] = [[2.0, 0.0 - 2.0], [0.0 - 2.0, 2.0]];
+    let f: [f64; 2] = [0.0, 4.0];
+    let s: bool = match solve_2x2(k, f) {
+        Solve2.Value { u } => u.u0 != u.u0,
+        Solve2.Singular => true,
+    };
+    return from_assertion(equals_bool(true, s, 4606));
+}

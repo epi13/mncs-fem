@@ -1,0 +1,69 @@
+mncs 0.18;
+
+// mncs.fem.assembly1d.v1 — explicit local-to-global assembly over 1D meshes.
+//
+// Assembly accumulates element contributions into shared global DOFs:
+// one element scatters its 2x2 ke into the four (n0/n1, n0/n1) lanes of
+// the NxN global, summing overlaps from elements that share a node.
+// Traversal order never affects the result (addition commutes); the
+// suite pins insertion-order independence directly.
+//
+// Representation follows the P-003 seed-threading pattern: the language
+// cannot spell a fill for symbolic bounds, so every kernel threads an
+// exemplar `seed` that supplies the result shape and is fully
+// overwritten lane by lane. Dense storage is the honest current shape
+// for these bounded verification meshes; canonical sparse assembly is
+// recorded pressure, not pretended capability (see solve/assembly
+// boundary notes in docs/).
+
+module mncs.fem.assembly1d.v1;
+
+use mncs.fem.mesh1d;
+
+// Scatter one 2x2 element matrix into the NxN global at (n0, n1).
+fn scatter_elem<N: Nat>(k: [[f64; N]; N], n0: u64, n1: u64, ke: [f64; 4]) -> (result: [[f64; N]; N]) {
+    let k1: [[f64; N]; N] = replace(k, n0, replace(k[n0], n0, k[n0][n0] + ke[0]));
+    let k2: [[f64; N]; N] = replace(k1, n0, replace(k1[n0], n1, k1[n0][n1] + ke[1]));
+    let k3: [[f64; N]; N] = replace(k2, n1, replace(k2[n1], n0, k2[n1][n0] + ke[2]));
+    let k4: [[f64; N]; N] = replace(k3, n1, replace(k3[n1], n1, k3[n1][n1] + ke[3]));
+    return k4;
+}
+
+// Assemble a whole fixed-size mesh: kes[e] is the validated stiffness of
+// elems[e]; seed carries the NxN shape (normally the zero matrix).
+fn assemble_mesh<N: Nat, M: Nat>(
+    elems: [BarElement; M],
+    kes: [[f64; 4]; M],
+    seed: [[f64; N]; N]
+) -> (result: [[f64; N]; N]) {
+    iterate e over elems carrying k: [[f64; N]; N] = seed {
+        next k = scatter_elem(k, elems[e].n0, elems[e].n1, kes[e]);
+    }
+    return k;
+}
+
+// Scatter one 2-entry element load vector into the global load at (n0, n1).
+fn scatter_fe<N: Nat>(f: [f64; N], n0: u64, n1: u64, fe: [f64; 2]) -> (result: [f64; N]) {
+    let f1: [f64; N] = replace(f, n0, f[n0] + fe[0]);
+    return replace(f1, n1, f1[n1] + fe[1]);
+}
+
+// Assemble global loads: point-load seed plus scattered element vectors.
+fn assemble_loads<N: Nat, M: Nat>(
+    elems: [BarElement; M],
+    fes: [[f64; 2]; M],
+    seed: [f64; N]
+) -> (result: [f64; N]) {
+    iterate e over elems carrying f: [f64; N] = seed {
+        next f = scatter_fe(f, elems[e].n0, elems[e].n1, fes[e]);
+    }
+    return f;
+}
+
+// Row sum of global row r: zero for rigid-body motion on exact inputs.
+fn row_sum<N: Nat>(k: [[f64; N]; N], r: u64) -> (result: f64) {
+    iterate c over k[r] carrying acc: f64 = 0.0 {
+        next acc = acc + k[r][c];
+    }
+    return acc;
+}

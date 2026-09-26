@@ -1,0 +1,66 @@
+mncs 0.18;
+
+// Native contracts for linear 1D shape functions: partition of unity,
+// nodal interpolation, derivative consistency, reference-domain
+// symmetry. Dyadic evaluation points use exact `==`; the inexact
+// interior point (xi = 0.3) uses library `approx` with explicit
+// tolerances — geometry owns no hidden epsilon and neither does FEM.
+
+module mncs.fem.test.shape1d.v1;
+
+use mncs.test.assertions;
+use mncs.test.suite;
+use mncs.fem.shape1d;
+use mncs.numerics.scalar_float;
+
+test partition_of_unity_exact_points() -> (result: TestResult) {
+    let a: bool = partition_residual(-1.0) == 0.0;
+    let b: bool = partition_residual(-0.5) == 0.0;
+    let c: bool = partition_residual(0.0) == 0.0;
+    let d: bool = partition_residual(0.5) == 0.0;
+    let e: bool = partition_residual(1.0) == 0.0;
+    return from_assertion(equals_bool(true, a && b && c && d && e, 4201));
+}
+
+test partition_of_unity_interior_approx() -> (result: TestResult) {
+    // xi = 0.3 is not dyadic: the residual is a rounding-scale value,
+    // pinned by an explicit tolerance, not by equality.
+    let r: f64 = partition_residual(0.3);
+    let ok: bool = approx(r, 0.0, 0.000000000000001, 0.0);
+    return from_assertion(equals_bool(true, ok, 4202));
+}
+
+test nodal_interpolation_kronecker() -> (result: TestResult) {
+    let a: bool = shape_n0(-1.0) == 1.0 && shape_n1(-1.0) == 0.0;
+    let b: bool = shape_n0(1.0) == 0.0 && shape_n1(1.0) == 1.0;
+    let c: bool = shape_n0(0.0) == 0.5 && shape_n1(0.0) == 0.5;
+    return from_assertion(equals_bool(true, a && b && c, 4203));
+}
+
+test interpolation_recovers_nodal_values() -> (result: TestResult) {
+    let at0: bool = shape_interp(-1.0, 3.0, 7.0) == 3.0;
+    let at1: bool = shape_interp(1.0, 3.0, 7.0) == 7.0;
+    let mid: bool = shape_interp(0.0, 3.0, 7.0) == 5.0;
+    return from_assertion(equals_bool(true, at0 && at1 && mid, 4204));
+}
+
+test shape_symmetry_across_center() -> (result: TestResult) {
+    // N0(xi) == N1(-xi): the element has no preferred end.
+    let a: bool = shape_n0(0.5) == shape_n1(0.0 - 0.5);
+    let b: bool = shape_n0(-0.25) == shape_n1(0.25);
+    return from_assertion(equals_bool(true, a && b, 4205));
+}
+
+test derivatives_constant_and_consistent() -> (result: TestResult) {
+    let vals: bool = shape_dn0() == -0.5 && shape_dn1() == 0.5;
+    // Derivatives sum to zero: a constant field has no gradient.
+    let sum: bool = shape_dn0() + shape_dn1() == 0.0;
+    return from_assertion(equals_bool(true, vals && sum, 4206));
+}
+
+test reference_domain_membership() -> (result: TestResult) {
+    let ends: bool = in_reference(-1.0) && in_reference(1.0);
+    let inside: bool = in_reference(0.0);
+    let outside: bool = in_reference(1.5) == false && in_reference(0.0 - 1.5) == false;
+    return from_assertion(equals_bool(true, ends && inside && outside, 4207));
+}

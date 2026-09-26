@@ -1,0 +1,63 @@
+mncs 0.18;
+
+// mncs.fem.constraints1d.v1 — boundary conditions as retained semantics.
+//
+// A constraint names the DOF it acts on; application never loses that
+// identity into an anonymous matrix edit. `Dirichlet` carries the
+// prescribed value beside the DOF, `is_constrained` answers membership
+// over a fixed constraint set, and the `reduce_fix0_*` kernels eliminate
+// the fixed DOF 0 explicitly: kff keeps free/free lanes, ff subtracts
+// the fixed-column contribution k[free][0]*u0. Reactions recover the
+// constrained force as R = (K u) - F on the fixed lane, so equilibrium
+// (R + applied = 0 on the structure) is checkable, not assumed.
+
+module mncs.fem.constraints1d.v1;
+
+// Prescribed displacement: DOF identity plus its imposed value.
+record Dirichlet { dof: u64, value: f64 }
+
+fn dirichlet(dof: u64, value: f64) -> (result: Dirichlet) {
+    return Dirichlet { dof: dof, value: value };
+}
+
+// Membership: is DOF d in the fixed set? Total over any fixed set.
+fn is_constrained<M: Nat>(dofs: [Dirichlet; M], d: u64) -> (result: bool) {
+    iterate e over dofs carrying hit: bool = false {
+        next hit = hit || dofs[e].dof == d;
+    }
+    return hit;
+}
+
+// Prescribed value lookup with an explicit fallback for free DOFs.
+fn prescribed_or<M: Nat>(dofs: [Dirichlet; M], d: u64, fallback: f64) -> (result: f64) {
+    iterate e over dofs carrying v: f64 = fallback {
+        next v = select(dofs[e].dof == d, dofs[e].value, v);
+    }
+    return v;
+}
+
+// Free 1x1 system for a 2-node mesh with DOF 0 prescribed at u0.
+record Free1 { kff: f64, ff: f64 }
+
+fn reduce_fix0_2(k: [[f64; 2]; 2], f: [f64; 2], u0: f64) -> (result: Free1) {
+    return Free1 { kff: k[1][1], ff: f[1] - k[1][0] * u0 };
+}
+
+// Free 2x2 system for a 3-node mesh with DOF 0 prescribed at u0.
+record Free2 { k: [[f64; 2]; 2], f: [f64; 2] }
+
+fn reduce_fix0_3(k: [[f64; 3]; 3], f: [f64; 3], u0: f64) -> (result: Free2) {
+    let kk: [[f64; 2]; 2] = [[k[1][1], k[1][2]], [k[2][1], k[2][2]]];
+    let ff: [f64; 2] = [f[1] - k[1][0] * u0, f[2] - k[2][0] * u0];
+    return Free2 { k: kk, f: ff };
+}
+
+// Reaction at fixed DOF 0 of a 2-node mesh: R0 = (K u)_0 - F_0.
+fn reaction_fix0_2(k: [[f64; 2]; 2], u: [f64; 2], f: [f64; 2]) -> (result: f64) {
+    return k[0][0] * u[0] + k[0][1] * u[1] - f[0];
+}
+
+// Reaction at fixed DOF 0 of a 3-node mesh.
+fn reaction_fix0_3(k: [[f64; 3]; 3], u: [f64; 3], f: [f64; 3]) -> (result: f64) {
+    return k[0][0] * u[0] + k[0][1] * u[1] + k[0][2] * u[2] - f[0];
+}

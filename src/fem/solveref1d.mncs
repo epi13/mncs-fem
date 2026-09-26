@@ -1,0 +1,50 @@
+mncs 0.18;
+
+// mncs.fem.solveref1d.v1 — REFERENCE small-dense solvers (NON-CANONICAL).
+//
+// Boundary statement: MNCS today owns no generic f64 linear-system
+// solver. `mncs.math.linalg` solves exact integer/rational systems
+// (Cramer/Bareiss, concrete shapes); `mncs.numerics.mat_float_build`
+// constructs matvec/matmul but no factorization or solve. These
+// closed-form 1x1/2x2 kernels exist ONLY so the FEM vertical slice can
+// run end-to-end and be verified against analysis; they must not be
+// mistaken for the canonical solver. Singularity (unconstrained
+// rigid-body mode, zero stiffness) is a structured `Singular` outcome
+// carrying FEM meaning, never a trap and never a bare "solver failed".
+//
+// Pressure F-001 tracks the missing generic Math f64 solver capability.
+
+module mncs.fem.solveref1d.v1;
+
+// Outcome of a 1-DOF solve k*u = f.
+enum Solve1 { Value { u: f64 }, Singular }
+
+fn solve_1x1(k: f64, f: f64) -> (result: Solve1) {
+    if k == 0.0 {
+        return Solve1.Singular;
+    }
+    return Solve1.Value { u: f / k };
+}
+
+// 2-DOF solution pair.
+record Sol2 { u0: f64, u1: f64 }
+
+// Outcome of a 2-DOF Cramer solve K*u = f.
+enum Solve2 { Value { u: Sol2 }, Singular }
+
+fn solve_2x2(k: [[f64; 2]; 2], f: [f64; 2]) -> (result: Solve2) {
+    let det: f64 = k[0][0] * k[1][1] - k[0][1] * k[1][0];
+    if det == 0.0 {
+        return Solve2.Singular;
+    }
+    let u0: f64 = (f[0] * k[1][1] - k[0][1] * f[1]) / det;
+    let u1: f64 = (k[0][0] * f[1] - f[0] * k[1][0]) / det;
+    return Solve2.Value { u: Sol2 { u0: u0, u1: u1 } };
+}
+
+fn solve1_is_singular(s: Solve1) -> (result: bool) {
+    return match s {
+        Solve1.Value { u } => u != u,
+        Solve1.Singular => true,
+    };
+}

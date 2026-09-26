@@ -1,0 +1,102 @@
+mncs 0.18;
+
+// End-to-end verification of the fixed-free bar under tip load:
+// F = 4, L = 2, A = 1, E = 4. Closed form: u_tip = F*L/(A*E) = 2,
+// reaction = -F = -4. Every expectation is exact binary64 `==`; the
+// analytic comparator (F*L/(A*E)) is spelled independently in each
+// test, never shared code with the model.
+
+module mncs.fem.test.model1d.v1;
+
+use mncs.test.assertions;
+use mncs.test.suite;
+use mncs.fem.bar1d;
+use mncs.fem.model1d;
+
+test cantilever_single_element_matches_analysis() -> (result: TestResult) {
+    let mat: BarMaterial = bar_material(1.0, 4.0);
+    let good: bool = match cantilever_2node(4.0, 2.0, mat) {
+        Cantilever.Value { u_tip, reaction, k_axial } => u_tip == 2.0 && reaction == -4.0 && k_axial == 2.0,
+        Cantilever.BadInput => false,
+        Cantilever.Singular => false,
+    };
+    return from_assertion(equals_bool(true, good, 4701));
+}
+
+test cantilever_matches_independent_formula() -> (result: TestResult) {
+    // u = F*L/(A*E) spelled here from first principles.
+    let mat: BarMaterial = bar_material(1.0, 4.0);
+    let exact: f64 = 4.0 * 2.0 / (1.0 * 4.0);
+    let good: bool = match cantilever_2node(4.0, 2.0, mat) {
+        Cantilever.Value { u_tip, reaction, k_axial } => u_tip == exact && k_axial == exact,
+        Cantilever.BadInput => false,
+        Cantilever.Singular => false,
+    };
+    return from_assertion(equals_bool(true, good && exact == 2.0, 4702));
+}
+
+test cantilever_equilibrium() -> (result: TestResult) {
+    let mat: BarMaterial = bar_material(1.0, 4.0);
+    let good: bool = match cantilever_2node(4.0, 2.0, mat) {
+        Cantilever.Value { u_tip, reaction, k_axial } => reaction + 4.0 == 0.0 && k_axial * u_tip == 4.0,
+        Cantilever.BadInput => false,
+        Cantilever.Singular => false,
+    };
+    return from_assertion(equals_bool(true, good, 4703));
+}
+
+test two_element_model_matches_single() -> (result: TestResult) {
+    // Linear elements reproduce the linear field exactly: refining
+    // one element into two leaves the tip displacement unchanged and
+    // the midpoint lands on the analytic line u(x) = F*x/(A*E).
+    let mat: BarMaterial = bar_material(1.0, 4.0);
+    let good: bool = match cantilever_3node(4.0, 2.0, mat) {
+        Cantilever3.Value { u_mid, u_tip, reaction } => u_tip == 2.0 && u_mid == 1.0 && reaction == -4.0,
+        Cantilever3.BadInput => false,
+        Cantilever3.Singular => false,
+    };
+    return from_assertion(equals_bool(true, good, 4704));
+}
+
+test two_element_midpoint_on_analytic_line() -> (result: TestResult) {
+    let mat: BarMaterial = bar_material(1.0, 4.0);
+    let exact_mid: f64 = 4.0 * 1.0 / (1.0 * 4.0);
+    let exact_tip: f64 = 4.0 * 2.0 / (1.0 * 4.0);
+    let good: bool = match cantilever_3node(4.0, 2.0, mat) {
+        Cantilever3.Value { u_mid, u_tip, reaction } => u_mid == exact_mid && u_tip == exact_tip,
+        Cantilever3.BadInput => false,
+        Cantilever3.Singular => false,
+    };
+    return from_assertion(equals_bool(true, good, 4705));
+}
+
+test zero_tip_load_gives_zero_response() -> (result: TestResult) {
+    // Zero load is a valid model with a zero solution, not a degenerate.
+    let mat: BarMaterial = bar_material(1.0, 4.0);
+    let good: bool = match cantilever_2node(0.0, 2.0, mat) {
+        Cantilever.Value { u_tip, reaction, k_axial } => u_tip == 0.0 && reaction == 0.0 && k_axial == 2.0,
+        Cantilever.BadInput => false,
+        Cantilever.Singular => false,
+    };
+    return from_assertion(equals_bool(true, good, 4706));
+}
+
+test cantilever_rejects_degenerate_input() -> (result: TestResult) {
+    let mat: BarMaterial = bar_material(1.0, 4.0);
+    let zero_len: bool = match cantilever_2node(4.0, 0.0, mat) {
+        Cantilever.Value { u_tip, reaction, k_axial } => u_tip != u_tip,
+        Cantilever.BadInput => true,
+        Cantilever.Singular => false,
+    };
+    let bad_mat: bool = match cantilever_2node(4.0, 2.0, bar_material(0.0 - 1.0, 4.0)) {
+        Cantilever.Value { u_tip, reaction, k_axial } => u_tip != u_tip,
+        Cantilever.BadInput => true,
+        Cantilever.Singular => false,
+    };
+    let refined_bad: bool = match cantilever_3node(4.0, 0.0 - 2.0, mat) {
+        Cantilever3.Value { u_mid, u_tip, reaction } => u_tip != u_tip,
+        Cantilever3.BadInput => true,
+        Cantilever3.Singular => false,
+    };
+    return from_assertion(equals_bool(true, zero_len && bad_mat && refined_bad, 4707));
+}

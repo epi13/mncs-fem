@@ -1,0 +1,95 @@
+mncs 0.18;
+
+// Native contracts for the bar element: known stiffness answers,
+// symmetry, rigid-body row sums, material/length rejection, and the
+// consistent uniform-load vector. Dyadic cases assert exact `==`; the
+// L = 3 case rounds (4/3) and uses explicit `approx`.
+
+module mncs.fem.test.bar1d.v1;
+
+use mncs.test.assertions;
+use mncs.test.suite;
+use mncs.fem.bar1d;
+use mncs.numerics.scalar_float;
+
+test ke_known_answer_exact() -> (result: TestResult) {
+    // L=2, A=1, E=4 -> k = 2, exact in binary64.
+    let good: bool = match bar_ke(2.0, bar_material(1.0, 4.0)) {
+        KeOutcome.Value { ke } => ke[0] == 2.0 && ke[1] == -2.0 && ke[2] == -2.0 && ke[3] == 2.0,
+        KeOutcome.BadLength => false,
+        KeOutcome.BadMaterial => false,
+    };
+    return from_assertion(equals_bool(true, good, 4301));
+}
+
+test ke_rounding_case_approx() -> (result: TestResult) {
+    // L=3, A=1, E=4 -> k = 4/3, correctly rounded once.
+    let good: bool = match bar_ke(3.0, bar_material(1.0, 4.0)) {
+        KeOutcome.Value { ke } => approx(ke[0], 1.3333333333333333, 0.000000000000001, 0.000000000000001)
+            && ke[1] == 0.0 - ke[0]
+            && ke[2] == 0.0 - ke[0]
+            && ke[3] == ke[0],
+        KeOutcome.BadLength => false,
+        KeOutcome.BadMaterial => false,
+    };
+    return from_assertion(equals_bool(true, good, 4302));
+}
+
+test ke_symmetric_and_rigid_body_free() -> (result: TestResult) {
+    // Symmetry ke01 == ke10, and zero row sums: rigid translation
+    // (u = [1, 1]) stores no strain energy and yields no force.
+    let good: bool = match bar_ke(2.0, bar_material(1.0, 4.0)) {
+        KeOutcome.Value { ke } => ke[1] == ke[2] && ke[0] + ke[1] == 0.0 && ke[2] + ke[3] == 0.0,
+        KeOutcome.BadLength => false,
+        KeOutcome.BadMaterial => false,
+    };
+    return from_assertion(equals_bool(true, good, 4303));
+}
+
+test ke_rejects_zero_length() -> (result: TestResult) {
+    let zero: bool = match bar_ke(0.0, bar_material(1.0, 4.0)) {
+        KeOutcome.Value { ke } => ke[0] != ke[0],
+        KeOutcome.BadLength => true,
+        KeOutcome.BadMaterial => false,
+    };
+    let negative: bool = match bar_ke(0.0 - 1.0, bar_material(1.0, 4.0)) {
+        KeOutcome.Value { ke } => ke[0] != ke[0],
+        KeOutcome.BadLength => true,
+        KeOutcome.BadMaterial => false,
+    };
+    return from_assertion(equals_bool(true, zero && negative, 4304));
+}
+
+test ke_rejects_bad_material() -> (result: TestResult) {
+    let area_zero: bool = match bar_ke(1.0, bar_material(0.0, 4.0)) {
+        KeOutcome.Value { ke } => ke[0] != ke[0],
+        KeOutcome.BadLength => false,
+        KeOutcome.BadMaterial => true,
+    };
+    let area_neg: bool = match bar_ke(1.0, bar_material(0.0 - 1.0, 4.0)) {
+        KeOutcome.Value { ke } => ke[0] != ke[0],
+        KeOutcome.BadLength => false,
+        KeOutcome.BadMaterial => true,
+    };
+    let young_zero: bool = match bar_ke(1.0, bar_material(1.0, 0.0)) {
+        KeOutcome.Value { ke } => ke[0] != ke[0],
+        KeOutcome.BadLength => false,
+        KeOutcome.BadMaterial => true,
+    };
+    let young_neg: bool = match bar_ke(1.0, bar_material(1.0, 0.0 - 2.0)) {
+        KeOutcome.Value { ke } => ke[0] != ke[0],
+        KeOutcome.BadLength => false,
+        KeOutcome.BadMaterial => true,
+    };
+    let valid: bool = material_is_ok(check_material(bar_material(1.0, 4.0)));
+    return from_assertion(equals_bool(true, area_zero && area_neg && young_zero && young_neg && valid, 4305));
+}
+
+test uniform_body_load_consistent() -> (result: TestResult) {
+    // b = 4 force/length over L = 2: fe = [4, 4], exact.
+    let fe: [f64; 2] = uniform_body_load(2.0, 4.0);
+    let ok: bool = fe[0] == 4.0 && fe[1] == 4.0;
+    // Total load is conserved into the nodes: fe0 + fe1 == b * L.
+    let conserved: bool = fe[0] + fe[1] == 4.0 * 2.0;
+    return from_assertion(equals_bool(true, ok && conserved, 4306));
+}

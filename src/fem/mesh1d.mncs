@@ -1,0 +1,89 @@
+mncs 0.18;
+
+// mncs.fem.mesh1d.v1 — 1D mesh topology: node/element identity and validation.
+//
+// A node is a semantic identity (`id`) plus a coordinate (`x`). Identity is
+// NEVER derived from coordinates: two distinct nodes may share one
+// coordinate, and one node participates in several elements. Element
+// connectivity references node identities; a local element node position
+// (0 or 1) is not a global node identity.
+//
+// All checks are total over finite inputs and return data, never traps:
+// out-of-range connectivity, self-connected elements, and degenerate
+// builders are explicit outcomes the caller must handle.
+
+module mncs.fem.mesh1d.v1;
+
+// A mesh node: semantic identity plus 1D coordinate.
+record Node1 { id: u64, x: f64 }
+
+// A 2-node bar element: semantic identity plus global node identities.
+record BarElement { id: u64, n0: u64, n1: u64 }
+
+fn node1(id: u64, x: f64) -> (result: Node1) {
+    return Node1 { id: id, x: x };
+}
+
+fn bar_element(id: u64, n0: u64, n1: u64) -> (result: BarElement) {
+    return BarElement { id: id, n0: n0, n1: n1 };
+}
+
+// Outcome of validating one element against a node count.
+enum ElemCheck { Ok, NodeOutOfRange, SelfConnected }
+
+fn check_element(e: BarElement, n_nodes: u64) -> (result: ElemCheck) {
+    if e.n0 >= n_nodes {
+        return ElemCheck.NodeOutOfRange;
+    }
+    if e.n1 >= n_nodes {
+        return ElemCheck.NodeOutOfRange;
+    }
+    if e.n0 == e.n1 {
+        return ElemCheck.SelfConnected;
+    }
+    return ElemCheck.Ok;
+}
+
+fn elem_is_ok(c: ElemCheck) -> (result: bool) {
+    return match c {
+        ElemCheck.Ok => true,
+        ElemCheck.NodeOutOfRange => false,
+        ElemCheck.SelfConnected => false,
+    };
+}
+
+// Whole-mesh validation: every element of a fixed-size connectivity
+// array must reference existing distinct nodes.
+fn mesh_ok<M: Nat>(elems: [BarElement; M], n_nodes: u64) -> (result: bool) {
+    iterate e over elems carrying ok: bool = true {
+        next ok = ok && elem_is_ok(check_element(elems[e], n_nodes));
+    }
+    return ok;
+}
+
+// Absolute element length from its two nodal coordinates. Total.
+fn elem_length(x0: f64, x1: f64) -> (result: f64) {
+    if x1 >= x0 {
+        return x1 - x0;
+    }
+    return x0 - x1;
+}
+
+// Outcome of the uniform-mesh coordinate builder.
+enum NodeX { Value { x: f64 }, BadIndex }
+
+// Coordinate of node i in a uniform mesh of n nodes over [lo, hi].
+// Guards: n >= 2 (a mesh needs an interval) and i < n. The divisor
+// (n - 1) can never be zero past the guard, so no trap is reachable.
+fn uniform_node_x(lo: f64, hi: f64, i: u64, n: u64) -> (result: NodeX) {
+    if n <= 1 {
+        return NodeX.BadIndex;
+    }
+    if i >= n {
+        return NodeX.BadIndex;
+    }
+    let span: f64 = hi - lo;
+    let count: f64 = ((n - 1) as f64);
+    let lane: f64 = (i as f64);
+    return NodeX.Value { x: lo + span * lane / count };
+}
