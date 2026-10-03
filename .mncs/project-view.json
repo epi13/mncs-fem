@@ -1,0 +1,35 @@
+{
+  "capabilities": [
+    {
+      "contract": "finite-elements",
+      "fingerprint_sources": [
+        "src/fem/"
+      ],
+      "kind": "mncs-library",
+      "stability": "experimental",
+      "version": "0.1"
+    }
+  ],
+  "dependencies": [
+    {
+      "contract": "mncs-numerics.numeric-primitives",
+      "envelope": {
+        "op": "compatible-minor",
+        "version": "1"
+      },
+      "evidence_refs": [
+        "tests/native/bar1d_tests.mncs",
+        "tests/native/shape1d_tests.mncs"
+      ],
+      "required": true
+    }
+  ],
+  "entry": [
+    "python3 scripts/run_tests.py"
+  ],
+  "purpose": "Machine-native finite element analysis for MNCS: nodes, DOFs, mesh topology, elements, shape functions, assembly, constraints, and FEM result structures, expressed natively in mncs-language.",
+  "repository": "mncs-fem",
+  "schema_version": "mncs.project-view/1",
+  "source_identity": "sha256:b2f9d3b40a3389e9a2b9f710b35d231617536bdcb1f780044a1e1ac1378d9248",
+  "structure": {}
+}

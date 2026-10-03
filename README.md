@@ -1,5 +1,21 @@
 # mncs-fem
 
+<!-- MNCS:generated:begin -->
+## Project entry
+
+Machine-native finite element analysis for MNCS: nodes, DOFs, mesh topology, elements, shape functions, assembly, constraints, and FEM result structures, expressed natively in mncs-language.
+
+```bash
+python3 scripts/run_tests.py
+```
+
+Declared capabilities (declarations do not establish execution health):
+
+- `finite-elements/0.1` — mncs-library (experimental)
+
+Semantic sources and ownership: `.mncs/projections.json`.
+<!-- MNCS:generated:end -->
+
 Machine-native finite element analysis for MNCS.
 
 `mncs-fem` is the canonical FEM implementation: one architecture, no
