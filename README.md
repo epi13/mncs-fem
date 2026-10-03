@@ -1,5 +1,8 @@
 # mncs-fem
 
+<!-- MNCS:generated:begin -->
+<!-- MNCS:generated:end -->
+
 Machine-native finite element analysis for MNCS.
 
 `mncs-fem` is the canonical FEM implementation: one architecture, no
